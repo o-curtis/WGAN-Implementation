@@ -1,16 +1,11 @@
 # WGAN-Implementation
 Implementation of WGAN. Originally used for (Curtis et. al, 2021)
 
-from clip_constraint import *
-class astrofake():  
+class astrofake():
     def __init__(self, data, image_shape=(256,256,1), kernel_size=(4,4), batch_size=16, latent_dim=200, starting_num_filters=int(512), every_n_epochs=5):
         """
-        Initialize GAN.
-        Attempts to load in data from .npy file. If it cannot then it will preprocess Gadget-2 snapshot files
-        Saves the loaded density maps in self.real_data.
-
+        Initialize WGAN.
         Parameters
-        ----------
         data - arr - 4d array of shape (N, image_shape). i.e., a 4d tensor of monochannel 2 dimensional images.
         image_shape - touple - touple of shape (dim, dim, 1) where dim is the resolution of your images.
         kernel_size - touple - touple of shape (k, k) where k is the size of the kernel used for convolution layers
