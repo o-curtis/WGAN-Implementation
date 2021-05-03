@@ -13,7 +13,7 @@ from clip_constraint import *
 
 class astrofake():  
 
-    def __init__(self, box_length=100, dim=256, resampler='CIC', interactive_plots=False, batch_size=16, filename_base="snapshot*", latent_dim=200, starting_num_filters=int(512), every_n_epochs=5):
+    def __init__(self, data, image_shape=(256,256,1), kernel_size=(4,4), batch_size=16, latent_dim=200, starting_num_filters=int(512), every_n_epochs=5):
         """
         Initialize GAN.
         Attempts to load in data from .npy file. If it cannot then it will preprocess Gadget-2 snapshot files
@@ -21,23 +21,16 @@ class astrofake():
 
         Parameters
         ----------
-        box_length - float - the length of the simulation box in units h-1 Mpc
-        dim - int - number of pixels along an axis of the images
-        resampler - str - 'NEAREST', 'CIC', or 'TSC' discretization method to use when going from particle positions to density maps
-        interactive_plots - bool - Whether to display plots during training process
+        data - arr - 4d array of shape (N, image_shape). i.e., a 4d tensor of monochannel 2 dimensional images.
+        image_shape - touple - touple of shape (dim, dim, 1) where dim is the resolution of your images.
+        kernel_size - touple - touple of shape (k, k) where k is the size of the kernel used for convolution layers
         batch_size - int - How many samples the network is trained on before updating the parameters
-        filename_base - str - base name of snapshot files to be loaded in as the training set
         latent_dim - int - latent_dim x latent_dim is the size of the latent space vector fed into the generator network
         starting_num_filters - int - how many filters the generator network starts with / the discriminator network ends with
         every_n_epochs - int - How often to save the loss of the networks
         """
 
         self.params = {
-            'box_length': box_length,
-            'dim': dim,
-            'resampler': resampler,
-            'interactive_plots': interactive_plots,
-            'filename_base': filename_base,
             'latent_dim': latent_dim,
             'start_num_filters': starting_num_filters,
             'batch_size': batch_size,
@@ -45,18 +38,10 @@ class astrofake():
         }
 
 
-        self.img_shape = (self.params['dim'], self.params['dim'], 1)
-        self.kernel_size = (4,4)
-
-        #Try: will try to load in already preproccessed data
-        #Except: will preproccess the data and save the results
-        #try:
-        self.real_data = np.load("/projectnb/ganvoid/runs/20200713/all_2d_slices_512p_512mpc_cic_smoothed_normed.npy")
-        #except:
-        #    all_real_data = self.load_in_all_density_maps()
-        #    self.real_data = self.make_images(all_real_data)
-        #    np.save("all_2d_slices", self.real_data)
-        
+        self.img_shape = image_shape
+        self.kernel_size = kernel_size
+        self.real_data = data
+       
         np.random.shuffle(self.real_data)
         self.sample_size = len(self.real_data)
         
@@ -290,85 +275,6 @@ class astrofake():
             density_maps.append(this_snap)
         density_maps = np.array(density_maps)
         return density_maps
-        
-    def make_images(self, all_real_data):
-        """
-        This method takes in all particle coordinate data gathered with load_in_all_density_maps().
-        The method takes each snapshot and divides it into 1000 slices along each axis.
-        We then choose non-consecutive slices and make 2d density maps of shape (dim, dim) for each slice.
-        This is repeated for all Gadget-2 Snapshot files. So, for instance, if we had 10 snapshots
-        then we would have 500 images after slicing up the x-axis of one snapshot or 1,500 images
-        total for that snapshot. Giving a total of 15,000 2D images over all snapshots.
-        
-        TODO: clean up this code
-        
-        Parameters
-        -----------
-        all_real_data - array - An array of shape (number_of_snapshots, 512^3, 512^3, 512^3) from load_in_all_density_maps().
-            Array contains the x, y, z coordinates of every particle in all of the Gadget-2 Snapshot files.
-        
-        Returns
-        -----------
-        final_data - array - An array of shape (number_of_snapshots * 1500, 256, 256, 1). That is, an array 
-            containing all of the 256x256 monochromatic images that will be used to train the GAN. 
-        """
-        final_data = []
-        for snap in range(len(all_real_data)):
-            zs = all_real_data[snap][:,0]
-            ys = all_real_data[snap][:,1]
-            xs = all_real_data[snap][:,2]
-            zs[zs >= self.params['box_length']] = zs[zs >= self.params['box_length']] - self.params['box_length']
-            ys[ys >= self.params['box_length']] = ys[ys >= self.params['box_length']] - self.params['box_length']
-            xs[xs >= self.params['box_length']] = xs[xs >= self.params['box_length']] - self.params['box_length']
-            these_slices = np.arange(0, 100, 0.1)
-            for k in range(len(these_slices)):
-                if (k%2 != 0):
-                    continue
-                this_slice_req = (zs >= these_slices[k]) & (zs < (these_slices[k]+0.1))
-                ys_in_slice = ys[this_slice_req]
-                xs_in_slice = xs[this_slice_req] 
-                this_map = np.zeros((256,256))
-                this_dim = (100/256)
-                for q in range(len(ys_in_slice)):
-                    this_y = int(np.floor(ys_in_slice[q] / this_dim))
-                    this_x = int(np.floor(xs_in_slice[q] / this_dim))
-                    this_map[this_y][this_x] += 1
-                this_map = gaussian_filter(this_map, 1, mode='wrap')
-                this_map = this_normalization(this_map)
-                this_map = np.reshape(this_map, (256,256,1))
-                final_data.append(this_map)
-                
-                this_slice_req = (ys >= these_slices[k]) & (ys < (these_slices[k]+0.1))
-                zs_in_slice = zs[this_slice_req]
-                xs_in_slice = xs[this_slice_req]
-                this_map = np.zeros((256,256))
-                this_dim = (100/256)
-                for q in range(len(zs_in_slice)):
-                    this_z = int(np.floor(zs_in_slice[q] / this_dim))
-                    this_x = int(np.floor(xs_in_slice[q] / this_dim))
-                    this_map[this_z][this_x] += 1
-                this_map = gaussian_filter(this_map, 1, mode='wrap')
-                this_map = this_normalization(this_map)
-                this_map = np.reshape(this_map, (256,256,1))
-                final_data.append(this_map)
-                
-                this_slice_req = (xs >= these_slices[k]) & (xs < (these_slices[k]+0.1))
-                zs_in_slice = zs[this_slice_req]
-                ys_in_slice = ys[this_slice_req]
-                this_map = np.zeros((256,256))
-                this_dim = (100/256)
-                for q in range(len(zs_in_slice)):
-                    this_z = int(np.floor(zs_in_slice[q] / this_dim))
-                    this_y = int(np.floor(ys_in_slice[q] / this_dim))
-                    this_map[this_z][this_y] += 1
-                this_map = gaussian_filter(this_map, 1, mode='wrap')
-                this_map = this_normalization(this_map)
-                this_map = np.reshape(this_map, (256,256,1))
-                final_data.append(this_map)
-        final_data = np.array(final_data)
-        total_num_images = int(len(all_real_data) * 3 * 1000 / 2)
-        final_data = np.reshape(final_data, (total_num_images, 256, 256, 1))  
-        return final_data
 
 def this_normalization(thismap, a=4):
     return ((2*thismap)/(thismap+a)) - 1
@@ -380,6 +286,7 @@ def wasserstein_loss(y_true, y_pred):
     return TFmean(y_true * y_pred)
 
 if __name__ == '__main__': 
-    astrogan = astrofake(batch_size=16, latent_dim=100, interactive_plots=False, every_n_epochs=1)
+    data = np.load("/projectnb/ganvoid/runs/20200713/all_2d_slices_512p_512mpc_cic_smoothed_normed.npy")
+    astrogan = astrofake(batch_size=16, data=data, latent_dim=100, interactive_plots=False, every_n_epochs=1)
     gloss, dloss = astrogan.train_a_network(epochs=[0,4])
 
